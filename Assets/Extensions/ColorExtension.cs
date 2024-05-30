@@ -4,6 +4,19 @@ using UnityEngine;
 
 public static class ColorExtension
 {
+    public static bool IsEqualTo(this Color32 color, Color32 other)
+    {
+        return Mathf.Approximately(color.r, other.r) && Mathf.Approximately(color.g, other.g) && Mathf.Approximately(color.b, other.b);
+    }
+    public static bool IsEqualTo(this Color color, Color other)
+    {
+        return Mathf.Approximately(color.r, other.r) && Mathf.Approximately(color.g, other.g) && Mathf.Approximately(color.b, other.b);
+    }
+
+    public static float Compare_Binary(Color colorMain, Color colorOther)
+    {
+        return (colorMain == colorOther) ? 0 : 1;
+    }
     public static float Compare_Euclidean(Color colorMain, Color colorOther)
     {
         return Vector4.Magnitude(colorMain - colorOther)/ 1.7321f; //sqrt(3)

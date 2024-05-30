@@ -1,20 +1,30 @@
-using System;
-using System.Globalization;
-using System.Linq;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 
 public class FloodFillAnimate : MonoBehaviour
 {
-    [SerializeField] Image FloodFillImage;
+    [SerializeField] Image FloodFillImage;  
     [SerializeField] Color ColorToFill;
+    [SerializeField, Range(0f, 1f)] float CompareThreshold = 0.1f;
+
     RectTransform RT;
+
+    public bool autoStep = true;
+    public float LogicStepDuration = 0.1f;
+    float LogicStepTimer = 0;
+
+    bool isLogicPaused = true;
+    bool UnpauseLogic() => !isLogicPaused;
+
+    Coroutine fillCoroutine;
 
     void Awake()
     {
+        print(ColorExtension.Compare_Euclidean(Color.black, Color.white));
         RT = FloodFillImage.GetComponent<RectTransform>();
     }
-    // Update is called once per frame
+
     void Update()
     {
         var mousePos = Input.mousePosition;
@@ -28,26 +38,52 @@ public class FloodFillAnimate : MonoBehaviour
         if(isMouseWithin && Input.GetMouseButtonDown(0)) 
         {
             var texture = FloodFillImage.sprite.texture;
+            var buffer = texture.GetPixels32();
             int idx = (int)(normalizedimagePos.x * texture.width);
             int idy = (int)(normalizedimagePos.y * texture.height);
 
-            StartFloodFill(FloodFillImage, idx, idy);
+            if(fillCoroutine != null) StopCoroutine(fillCoroutine);
+            fillCoroutine = StartCoroutine(StartFloodFill(buffer, idx, idy, texture.width, texture.height));
+        }
+
+        if (autoStep)
+        {
+            //one step per each LogicStepDuration time frame
+            LogicStepTimer += Time.deltaTime;
+            if (LogicStepTimer >= LogicStepDuration)
+            {
+                isLogicPaused = false;
+                LogicStepTimer = 0;
+            }
+        }
+        else
+        {
+            if (Input.GetKey(KeyCode.Space))
+            {
+                isLogicPaused = false;
+            }
         }
     }
-    void StartFloodFill(Image image,int idx,int idy)
+    IEnumerator StartFloodFill(Color32[] buffer, int idx, int idy, int xSize, int ySize)
     {
+        var index = idx + idy * xSize;
+
+        yield return RecursiveFloodFill(idx, idy, buffer, xSize, ySize, buffer[index], CompareThreshold, ColorToFill);
+
+        yield return null;
+
+        UpdateImageTexture(FloodFillImage, buffer);
+    }
+
+    void UpdateImageTexture(Image image, Color32[] pixels)
+    {
+        if (image == null | image.sprite == null) return;
+
         Texture2D texture = image.sprite.texture;
         var newTexture = Texture2DExtension.Clone(texture);
 
-        var buffer = newTexture.GetPixels32();
-        var index = idx + idy * newTexture.width;
-
-        RecursiveFloodFill(ref buffer, newTexture.width, newTexture.height,
-            idx, idy, buffer[index], 0.1f, ColorToFill);
-
-        newTexture.SetPixels32(buffer);
+        newTexture.SetPixels32(pixels);
         newTexture.Apply();
-
         image.sprite = Sprite.Create(newTexture, image.sprite.rect, Vector2.zero);
     }
 
@@ -55,128 +91,29 @@ public class FloodFillAnimate : MonoBehaviour
     /// Very Basic RecursiveFloodFill
     /// Note this will cause stack overflow due to lots of recursive calls
     /// </summary>
-    void RecursiveFloodFill(ref Color32[] buffer, int xSize, int ySize,
-        int idx, int idy, in Color targetColor, float threshold, Color colorToFill)
+    IEnumerator RecursiveFloodFill(int idx, int idy, Color32[] buffer, int xSize, int ySize,
+         Color targetColor, float threshold, Color colorToFill)
     {
-        bool indexOutOfBounds = idx < 0 || idx > xSize || idy < 0 || idy > ySize;
+         bool indexOutOfBounds = idx < 0 || idx > xSize - 1 || idy < 0 || idy > ySize - 1;
 
-        if (indexOutOfBounds) return;
+        if (indexOutOfBounds) yield break;
 
         //1. If current node is not Inside return.
         var index = idx + idy * xSize;
         Color32 currentColor = buffer[index];
-        bool isColorSimilar = ColorExtension.Compare_Euclidean(currentColor,targetColor) < threshold;
-        if (!isColorSimilar) return;
+        bool isColorSimilar = ColorExtension.Compare_Euclidean(currentColor, targetColor) < threshold;
+        if (!isColorSimilar) yield break;
 
         //2. Set the node
         buffer[index] = colorToFill;
 
+        UpdateImageTexture(FloodFillImage, buffer);
+        isLogicPaused = true; yield return new WaitUntil(UnpauseLogic);
+
         //3. Perform Flood-fill on the neighbours
-        RecursiveFloodFill(ref buffer, xSize, ySize, idx + 1, idy, targetColor, threshold, colorToFill);
-        RecursiveFloodFill(ref buffer, xSize, ySize, idx - 1, idy, targetColor, threshold, colorToFill);
-        RecursiveFloodFill(ref buffer, xSize, ySize, idx, idy + 1, targetColor, threshold, colorToFill);
-        RecursiveFloodFill(ref buffer, xSize, ySize, idx, idy - 1, targetColor, threshold, colorToFill);
-
-        //4. End
-    }
-}
-
-
-public static class Texture2DExtension
-{
-    public static Texture2D Clone(Texture2D source)
-    {
-        Texture2D clone = new Texture2D(source.width, source.height);
-        clone.SetPixels32(source.GetPixels32());
-        clone.Apply();
-        return clone;
-    }
-}
-public static class ColorExtension
-{
-    public static float Compare_Euclidean(Color colorMain, Color colorOther)
-    {
-        return Vector4.Magnitude(colorMain - colorOther);
-    }
-
-    public static float Compare_LumaRec601(Color colorMain, Color colorOther)
-    {
-        var lumaY_colorMain = 0.299f * colorMain.r + 0.587f * colorMain.g + 0.114f * colorMain.b;
-        var lumaY_colorOther = 0.299f * colorOther.r + 0.587f * colorOther.g + 0.114f * colorOther.b;
-        return lumaY_colorMain - lumaY_colorOther;
-    }
-    public static float Compare_LumaRec709(Color colorMain, Color colorOther)
-    {
-        var lumaY_colorMain = 0.2126f * colorMain.r + 0.7152f * colorMain.g + 0.0722f * colorMain.b;
-        var lumaY_colorOther = 0.2126f * colorOther.r + 0.7152f * colorOther.g + 0.0722f * colorOther.b;
-        return lumaY_colorMain - lumaY_colorOther;
-    }
-
-    public static float Compare_DeltaE_CIE76(Color colorMain, Color colorOther)
-    {
-        throw new NotImplementedException();
-    }
-
-    public static void RGBToXYZ()
-    {
-        throw new NotImplementedException();
-        //http://www.brucelindbloom.com/index.html?Eqn_DeltaE_CIE76.html
-    }
-    public static LabColor XYZToLAB()
-    {
-        throw new NotImplementedException();
-        //http://www.brucelindbloom.com/index.html?Eqn_DeltaE_CIE76.html
-
-        // conversion algorithm described here: http://www.brucelindbloom.com/index.html?Eqn_XYZ_to_Lab.html
-        //double Xr = _targetWhitePoint.X, Yr = _targetWhitePoint.Y, Zr = _targetWhitePoint.Z;
-
-        //double xr = sourceColor.X / Xr, yr = sourceColor.Y / Yr, zr = sourceColor.Z / Zr;
-
-        //var fx = f(xr);
-        //var fy = f(yr);
-        //var fz = f(zr);
-
-        //var L = 116 * fy - 16;
-        //var a = 500 * (fx - fy);
-        //var b = 200 * (fy - fz);
-
-        //var targetColor = new LabColor(in L, in a, in b);
-        //return targetColor;
-
-        //private static double f(double cr)
-        //{
-        //    var fc = cr > Epsilon ? Pow(cr, 1 / 3d) : (Kappa * cr + 16) / 116d;
-        //    return fc;
-        //}
-    }
-
-    public struct LabColor
-    {
-        /// <summary>
-        /// L* (Lightness 0 - 100)
-        /// </summary>
-        public readonly float L;
-
-        /// <summary>
-        /// a* (Red/Green from -100 to 100)
-        /// </summary>
-        public readonly float a;
-
-        /// <summary>
-        /// b* (Blue/Yellow from -100 to 100)
-        /// </summary>
-        public readonly float b;
-
-        /// <param name="l">L* (Lightness 0 - 100)</param>
-        /// <param name="a">a* (Red/Green from -100 to 100)</param>
-        /// <param name="b">b* (Blue/Yellow from -100 to 100)</param>
-        public LabColor(float L, float a, float b)
-        {
-            this.L = L;
-            this.a = a;
-            this.b = b;
-        }
-
-        public override string ToString() => string.Format(CultureInfo.InvariantCulture, "Lab [L={0:0.##}, a={1:0.##}, b={2:0.##}]", L, a, b);
+        yield return RecursiveFloodFill(idx + 1, idy, buffer, xSize, ySize, targetColor, threshold, colorToFill);
+        yield return RecursiveFloodFill(idx - 1, idy, buffer, xSize, ySize, targetColor, threshold, colorToFill);
+        yield return RecursiveFloodFill(idx, idy + 1, buffer, xSize, ySize, targetColor, threshold, colorToFill);
+        yield return RecursiveFloodFill(idx, idy - 1, buffer, xSize, ySize, targetColor, threshold, colorToFill);
     }
 }

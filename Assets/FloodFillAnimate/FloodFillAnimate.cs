@@ -373,6 +373,7 @@ public class FloodFillAnimate : MonoBehaviour
             //Early Out
             if (!outOfBounds)
             {
+                bool span_added = false;
                 for (int x = spanMin; x <= spanMax; x++)
                 {
                     index = x + nextY * xSize;
@@ -380,10 +381,14 @@ public class FloodFillAnimate : MonoBehaviour
                     isVisited = ColorExtension.IsEqualTo(currentColor, colorToFill);
                     isColorSimilar = CompareColor(currentColor, targetColor) <= threshold;
 
-                    if (!isVisited && isColorSimilar)
+                    if (isVisited || !isColorSimilar)
+                    {
+                        span_added = false;
+                    }
+                    else if (!span_added)
                     {
                         cellsToCheck.Push((x, nextY));
-                        break;
+                        span_added = true;
                     }
                 }
             }
@@ -394,6 +399,7 @@ public class FloodFillAnimate : MonoBehaviour
             //Early Out
             if (!outOfBounds)
             {
+                bool span_added = false;
                 for (int x = spanMin; x <= spanMax; x++)
                 {
                     index = x + nextY * xSize;
@@ -401,10 +407,14 @@ public class FloodFillAnimate : MonoBehaviour
                     isVisited = ColorExtension.IsEqualTo(currentColor, colorToFill);
                     isColorSimilar = CompareColor(currentColor, targetColor) <= threshold;
 
-                    if (!isVisited && isColorSimilar)
+                    if (isVisited || !isColorSimilar)
+                    {
+                        span_added = false;
+                    }
+                    else if (!span_added)
                     {
                         cellsToCheck.Push((x, nextY));
-                        break;
+                        span_added = true;
                     }
                 }
             }

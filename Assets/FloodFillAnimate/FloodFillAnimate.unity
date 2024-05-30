@@ -223,7 +223,7 @@ MonoBehaviour:
   FloodFillImage: {fileID: 604327728}
   ColorToFill: {r: 0.8956318, g: 0, b: 1, a: 1}
   DifferenceThreshold: 0.293
-  FloodfillType: 4
+  FloodfillType: 3
   CompareType: 1
   autoStep: 1
   LogicStepDuration: -25.6

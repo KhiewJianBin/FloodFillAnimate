@@ -221,12 +221,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   FloodFillImage: {fileID: 604327728}
-  ColorToFill: {r: 1, g: 0, b: 0.69796467, a: 1}
-  DifferenceThreshold: 0.863
-  FloodfillType: 2
+  ColorToFill: {r: 0.8956318, g: 0, b: 1, a: 1}
+  DifferenceThreshold: 0.293
+  FloodfillType: 4
   CompareType: 1
   autoStep: 1
-  LogicStepDuration: 0.1
+  LogicStepDuration: -25.6
 --- !u!4 &22570894
 Transform:
   m_ObjectHideFlags: 0
@@ -391,7 +391,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: 379d434ca86e0dc4e8f311876e8077e0, type: 3}
+  m_Sprite: {fileID: 21300000, guid: 625fd252eb3d439469c70851cf970068, type: 3}
   m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1

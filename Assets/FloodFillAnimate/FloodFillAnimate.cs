@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -7,7 +8,9 @@ public enum FloodfillAlgo
 {
     Recursion,
     DFSFloodFill,
-    BFSFloodFill
+    BFSFloodFill,
+    SpanFloodFill,
+    Test1
 }
 public enum ColorComparisonAlgo
 {
@@ -18,7 +21,7 @@ public enum ColorComparisonAlgo
 
 public class FloodFillAnimate : MonoBehaviour
 {
-    [SerializeField] Image FloodFillImage;  
+    [SerializeField] Image FloodFillImage;
     [SerializeField] Color ColorToFill;
 
     /// <summary>
@@ -42,6 +45,7 @@ public class FloodFillAnimate : MonoBehaviour
 
     Coroutine fillCoroutine;
 
+    Color32[] buffer;
     void Awake()
     {
         RT = FloodFillImage.GetComponent<RectTransform>();
@@ -51,21 +55,23 @@ public class FloodFillAnimate : MonoBehaviour
     {
         var mousePos = Input.mousePosition;
 
-        RectTransformUtility.ScreenPointToLocalPointInRectangle(RT, mousePos, null , out Vector2 localPos);
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(RT, mousePos, null, out Vector2 localPos);
         Vector2 imageSize = RT.sizeDelta;
-        Vector2 normalizedimagePos = new Vector2((localPos.x + imageSize.x * 0.5f) / imageSize.x , (localPos.y + imageSize.y * 0.5f) / imageSize.y);
+        Vector2 normalizedimagePos = new Vector2((localPos.x + imageSize.x * 0.5f) / imageSize.x, (localPos.y + imageSize.y * 0.5f) / imageSize.y);
 
         bool isMouseWithin = normalizedimagePos.x >= 0 && normalizedimagePos.y >= 0;
 
-        if(isMouseWithin && Input.GetMouseButtonDown(0)) 
+        if (isMouseWithin && Input.GetMouseButtonDown(0))
         {
             var texture = FloodFillImage.sprite.texture;
-            var buffer = texture.GetPixels32();
+            buffer = texture.GetPixels32();
             int idx = (int)(normalizedimagePos.x * texture.width);
             int idy = (int)(normalizedimagePos.y * texture.height);
 
-            if(fillCoroutine != null) StopCoroutine(fillCoroutine);
-            fillCoroutine = StartCoroutine(StartFloodFill(buffer, idx, idy, texture.width, texture.height));
+            if (fillCoroutine != null) StopCoroutine(fillCoroutine);
+            {
+                fillCoroutine = StartCoroutine(StartFloodFill(buffer, idx, idy, texture.width, texture.height));
+            }
         }
 
         if (autoStep)
@@ -101,6 +107,27 @@ public class FloodFillAnimate : MonoBehaviour
                 break;
             case FloodfillAlgo.BFSFloodFill:
                 yield return BFSFloodFill(idx, idy, buffer, xSize, ySize, DifferenceThreshold, ColorToFill);
+                break;
+            case FloodfillAlgo.SpanFloodFill:
+                yield return SpanFloodFill(idx, idy, buffer, xSize, ySize, DifferenceThreshold, ColorToFill);
+                break;
+            case FloodfillAlgo.Test1:
+                bool[,] array = new bool[xSize, ySize];
+                for (int i = 0; i < xSize; i++)
+                {
+                    for (int j = 0; j < ySize; j++)
+                    {
+                        var index2 = j + i * xSize;
+                        array[i, j] = !buffer[index2].IsEqualTo(Color.white);
+                    }
+                }
+                yield return MyFill(array, idx, idy);
+
+                bool[] b = array.Cast<bool>().ToArray();
+                for (int i = 0; i < b.Length; i++)
+                {
+                    buffer[i] = b[i] ? ColorToFill : Color.white;
+                }
                 break;
         }
 
@@ -145,7 +172,7 @@ public class FloodFillAnimate : MonoBehaviour
     IEnumerator RecursiveFloodFill(int idx, int idy, Color32[] buffer, int xSize, int ySize,
          Color targetColor, float threshold, Color32 colorToFill)
     {
-         bool indexOutOfBounds = idx < 0 || idx > xSize - 1 || idy < 0 || idy > ySize - 1;
+        bool indexOutOfBounds = idx < 0 || idx > xSize - 1 || idy < 0 || idy > ySize - 1;
 
         if (indexOutOfBounds) yield break;
 
@@ -244,7 +271,7 @@ public class FloodFillAnimate : MonoBehaviour
 
             //3. Stack Neighbours if color is similar
             var neighbours = FindNeighbours(currentCell, xSize, ySize);
-            foreach ((int x, int y) neighbour in neighbours) 
+            foreach ((int x, int y) neighbour in neighbours)
             {
                 index = neighbour.x + neighbour.y * xSize;
                 Color32 currentColor = buffer[index];
@@ -266,6 +293,126 @@ public class FloodFillAnimate : MonoBehaviour
         }
     }
 
+    IEnumerator SpanFloodFill(int idx, int idy, Color32[] buffer, int xSize, int ySize,
+        float threshold, Color32 colorToFill)
+    {
+        isLogicPaused = true;
+
+        //1. Set first node and Target Color
+        Stack<(int x, int y)> cellsToCheck = new();
+        cellsToCheck.Push((idx, idy));
+        var index = idx + idy * xSize;
+        Color targetColor = buffer[index];
+
+        while (cellsToCheck.Count > 0)
+        {
+            //2. Pop from stack
+            var currentCell = cellsToCheck.Pop();
+
+            //3. Color the current cell itself and walk left until hit a wall
+            bool isVisited = default;
+            bool isColorSimilar = default;
+            bool outOfBounds = default;
+            var spanMin = currentCell.x;
+            index = spanMin + currentCell.y * xSize;
+            do
+            {
+                buffer[index] = colorToFill;
+                UpdateImageTexture(FloodFillImage, buffer);
+                isLogicPaused = true; yield return new WaitUntil(UnpauseLogic);
+
+                var newxMin = spanMin - 1;
+                outOfBounds = newxMin < 0;
+
+                //Early Out
+                if (outOfBounds) break;
+
+                spanMin = newxMin;
+                index = spanMin + currentCell.y * xSize;
+                Color32 currentColor = buffer[index];
+                isVisited = ColorExtension.IsEqualTo(currentColor, colorToFill);
+                isColorSimilar = CompareColor(currentColor, targetColor) <= threshold;
+
+            } while (!outOfBounds && !isVisited && isColorSimilar);
+
+            //4. Color the cell to the right until hit a wall
+            int spanMax = currentCell.x;
+
+            outOfBounds = spanMax + 1 > xSize - 1;
+            if (!outOfBounds)
+            {
+                spanMax = spanMax + 1;
+                index = spanMax + currentCell.y * xSize;
+                Color32 currentColor = buffer[index];
+                isVisited = ColorExtension.IsEqualTo(currentColor, colorToFill);
+                isColorSimilar = CompareColor(currentColor, targetColor) <= threshold;
+            }
+
+            while (!outOfBounds && !isVisited && isColorSimilar)
+            {
+                buffer[index] = colorToFill;
+                UpdateImageTexture(FloodFillImage, buffer);
+                isLogicPaused = true; yield return new WaitUntil(UnpauseLogic);
+
+                var newxMax = spanMax + 1;
+                outOfBounds = newxMax > xSize - 1;
+
+                //Early Out
+                if (outOfBounds) break;
+
+                spanMax = newxMax;
+                index = spanMax + currentCell.y * xSize;
+                Color32 currentColor = buffer[index];
+                isVisited = ColorExtension.IsEqualTo(currentColor, colorToFill);
+                isColorSimilar = CompareColor(currentColor, targetColor) <= threshold;
+            }
+
+            //5. Check Up of "Span" to add to stack
+            var nextY = currentCell.y + 1;
+            outOfBounds = nextY > ySize - 1;
+            //Early Out
+            if (!outOfBounds)
+            {
+                for (int x = spanMin; x <= spanMax; x++)
+                {
+                    index = x + nextY * xSize;
+                    Color32 currentColor = buffer[index];
+                    isVisited = ColorExtension.IsEqualTo(currentColor, colorToFill);
+                    isColorSimilar = CompareColor(currentColor, targetColor) <= threshold;
+
+                    if (!isVisited && isColorSimilar)
+                    {
+                        cellsToCheck.Push((x, nextY));
+                        break;
+                    }
+                }
+            }
+
+            //6. Check Down of "Span" to add to stack
+            nextY = currentCell.y - 1;
+            outOfBounds = nextY < 0;
+            //Early Out
+            if (!outOfBounds)
+            {
+                for (int x = spanMin; x <= spanMax; x++)
+                {
+                    index = x + nextY * xSize;
+                    Color32 currentColor = buffer[index];
+                    isVisited = ColorExtension.IsEqualTo(currentColor, colorToFill);
+                    isColorSimilar = CompareColor(currentColor, targetColor) <= threshold;
+
+                    if (!isVisited && isColorSimilar)
+                    {
+                        cellsToCheck.Push((x, nextY));
+                        break;
+                    }
+                }
+            }
+        }
+
+        //4. Continue loop until no more in stack - cellsToCheck
+    }
+    
     (int, int)[] FindNeighbours((int x,int y) cell, int sizeX, int sizeY)
     {
         List<(int, int)> result = new List<(int, int)> ();
@@ -290,5 +437,115 @@ public class FloodFillAnimate : MonoBehaviour
         if (!indexOutOfBounds) result.Add(downCell);
 
         return result.ToArray();
+    }
+
+
+
+    IEnumerator MyFill(bool[,] array, int x, int y)
+    {
+        if (!array[y, x]) yield return _MyFill(array, x, y, array.GetLength(1), array.GetLength(0));
+    }
+
+    IEnumerator _MyFill(bool[,] array, int x, int y, int width, int height)
+    {
+        // at this point, we know array[y,x] is clear, and we want to move as far as possible to the upper-left. moving
+        // up is much more important than moving left, so we could try to make this smarter by sometimes moving to
+        // the right if doing so would allow us to move further up, but it doesn't seem worth the complexity
+        while (true)
+        {
+            int ox = x, oy = y;
+            while (y != 0 && !array[y - 1, x]) y--;
+            while (x != 0 && !array[y, x - 1]) x--;
+            if (x == ox && y == oy) break;
+        }
+        yield return MyFillCore(array, x, y, width, height);
+    }
+
+    IEnumerator MyFillCore(bool[,] array, int x, int y, int width, int height)
+    {
+        // at this point, we know that array[y,x] is clear, and array[y-1,x] and array[y,x-1] are set.
+        // we'll begin scanning down and to the right, attempting to fill an entire rectangular block
+        int lastRowLength = 0; // the number of cells that were clear in the last row we scanned
+        do
+        {
+            int rowLength = 0, sx = x; // keep track of how long this row is. sx is the starting x for the main scan below
+                                       // now we want to handle a case like |***|, where we fill 3 cells in the first row and then after we move to
+                                       // the second row we find the first  | **| cell is filled, ending our rectangular scan. rather than handling
+                                       // this via the recursion below, we'll increase the starting value of 'x' and reduce the last row length to
+                                       // match. then we'll continue trying to set the narrower rectangular block
+            if (lastRowLength != 0 && array[y, x]) // if this is not the first row and the leftmost cell is filled...
+            {
+                do
+                {
+                    if (--lastRowLength == 0) yield break; // shorten the row. if it's full, we're done
+                } while (array[y, ++x]); // otherwise, update the starting point of the main scan to match
+                sx = x;
+            }
+            // we also want to handle the opposite case, | **|, where we begin scanning a 2-wide rectangular block and
+            // then find on the next row that it has     |***| gotten wider on the left. again, we could handle this
+            // with recursion but we'd prefer to adjust x and lastRowLength instead
+            else
+            {
+                for (; x != 0 && !array[y, x - 1]; rowLength++, lastRowLength++)
+                {
+                    array[y, --x] = true; // to avoid scanning the cells twice, we'll fill them and update rowLength here
+                                          // if there's something above the new starting point, handle that recursively. this deals with cases
+                                          // like |* **| when we begin filling from (2,0), move down to (2,1), and then move left to (0,1).
+                                          // the  |****| main scan assumes the portion of the previous row from x to x+lastRowLength has already
+                                          // been filled. adjusting x and lastRowLength breaks that assumption in this case, so we must fix it
+
+                    bool[] b = array.Cast<bool>().ToArray();
+                    for (int i = 0; i < b.Length; i++)
+                    {
+                        buffer[i] = b[i] ? ColorToFill : Color.white;
+                    }
+                    UpdateImageTexture(FloodFillImage, buffer);
+                    isLogicPaused = true; yield return new WaitUntil(UnpauseLogic);
+
+                    if (y != 0 && !array[y - 1, x]) yield return _MyFill(array, x, y - 1, width, height); // use _Fill since there may be more up and left
+                }
+            }
+
+            // now at this point we can begin to scan the current row in the rectangular block. the span of the previous
+            // row from x (inclusive) to x+lastRowLength (exclusive) has already been filled, so we don't need to
+            // check it. so scan across to the right in the current row
+            for (; sx < width && !array[y, sx]; rowLength++, sx++)
+            {
+                array[y, sx] = true;
+
+                bool[] b = array.Cast<bool>().ToArray();
+                for (int i = 0; i < b.Length; i++)
+                {
+                    buffer[i] = b[i] ? ColorToFill : Color.white;
+                }
+                UpdateImageTexture(FloodFillImage, buffer);
+                isLogicPaused = true; yield return new WaitUntil(UnpauseLogic);
+            }
+            // now we've scanned this row. if the block is rectangular, then the previous row has already been scanned,
+            // so we don't need to look upwards and we're going to scan the next row in the next iteration so we don't
+            // need to look downwards. however, if the block is not rectangular, we may need to look upwards or rightwards
+            // for some portion of the row. if this row was shorter than the last row, we may need to look rightwards near
+            // the end, as in the case of |*****|, where the first row is 5 cells long and the second row is 3 cells long.
+            // we must look to the right  |*** *| of the single cell at the end of the second row, i.e. at (4,1)
+            if (rowLength < lastRowLength)
+            {
+                for (int end = x + lastRowLength; ++sx < end;) // 'end' is the end of the previous row, so scan the current row to
+                {                                          // there. any clear cells would have been connected to the previous
+                    if (!array[y, sx]) yield return MyFillCore(array, sx, y, width, height); // row. the cells up and left must be set so use FillCore
+                }
+            }
+            // alternately, if this row is longer than the previous row, as in the case |*** *| then we must look above
+            // the end of the row, i.e at (4,0)                                         |*****|
+            else if (rowLength > lastRowLength && y != 0) // if this row is longer and we're not already at the top...
+            {
+                for (int ux = x + lastRowLength; ++ux < sx;) // sx is the end of the current row
+                {
+                    if (!array[y - 1, ux]) yield return _MyFill(array, ux, y - 1, width, height); // since there may be clear cells up and left, use _Fill
+                }
+            }
+            lastRowLength = rowLength; // record the new row length
+        } while (lastRowLength != 0 && ++y < height); // if we get to a full row or to the bottom, we're done
+
+        yield return null;
     }
 }

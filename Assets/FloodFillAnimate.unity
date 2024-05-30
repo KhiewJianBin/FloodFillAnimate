@@ -221,6 +221,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   FloodFillImage: {fileID: 604327728}
+  ColorToFill: {r: 1, g: 0, b: 0.69796467, a: 1}
+  CompareThreshold: 0.1
+  autoStep: 1
+  LogicStepDuration: 0
 --- !u!4 &22570894
 Transform:
   m_ObjectHideFlags: 0
@@ -474,7 +478,7 @@ Canvas:
   m_RenderMode: 0
   m_Camera: {fileID: 0}
   m_PlaneDistance: 100
-  m_PixelPerfect: 0
+  m_PixelPerfect: 1
   m_ReceivesEvents: 1
   m_OverrideSorting: 0
   m_OverridePixelPerfect: 0

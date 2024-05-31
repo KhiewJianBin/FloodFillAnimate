@@ -6,7 +6,7 @@ using UnityEngine.UI;
 
 public enum FloodfillAlgo
 {
-    Recursion,
+    RecursiveFloodFill,
     DFSFloodFill,
     BFSFloodFill,
     SpanFloodFill,
@@ -101,7 +101,7 @@ public class FloodFillAnimate : MonoBehaviour
 
         switch (FloodfillType)
         {
-            case FloodfillAlgo.Recursion:
+            case FloodfillAlgo.RecursiveFloodFill:
                 yield return RecursiveFloodFill(idx, idy, buffer, SizeX, SizeY, buffer[index], DifferenceThreshold, ColorToFill);
                 break;
             case FloodfillAlgo.DFSFloodFill:

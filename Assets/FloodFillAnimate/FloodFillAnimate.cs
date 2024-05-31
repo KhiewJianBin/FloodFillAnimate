@@ -10,6 +10,7 @@ public enum FloodfillAlgo
     DFSFloodFill,
     BFSFloodFill,
     SpanFloodFill,
+    SpanAndFillFloodFill,
     Test1
 }
 public enum ColorComparisonAlgo
@@ -93,31 +94,35 @@ public class FloodFillAnimate : MonoBehaviour
         }
     }
 
-    IEnumerator StartFloodFill(Color32[] buffer, int idx, int idy, int xSize, int ySize)
+    IEnumerator StartFloodFill(Color32[] buffer, int idx, int idy, int SizeX, int SizeY)
     {
-        var index = idx + idy * xSize;
+        var index = idx + idy * SizeX;
+        var targetColor = buffer[index];
 
         switch (FloodfillType)
         {
             case FloodfillAlgo.Recursion:
-                yield return RecursiveFloodFill(idx, idy, buffer, xSize, ySize, buffer[index], DifferenceThreshold, ColorToFill);
+                yield return RecursiveFloodFill(idx, idy, buffer, SizeX, SizeY, buffer[index], DifferenceThreshold, ColorToFill);
                 break;
             case FloodfillAlgo.DFSFloodFill:
-                yield return DFSFloodFill(idx, idy, buffer, xSize, ySize, DifferenceThreshold, ColorToFill);
+                yield return DFSFloodFill(idx, idy, buffer, SizeX, SizeY, DifferenceThreshold, targetColor, ColorToFill);
                 break;
             case FloodfillAlgo.BFSFloodFill:
-                yield return BFSFloodFill(idx, idy, buffer, xSize, ySize, DifferenceThreshold, ColorToFill);
+                yield return BFSFloodFill(idx, idy, buffer, SizeX, SizeY, DifferenceThreshold, targetColor, ColorToFill);
                 break;
             case FloodfillAlgo.SpanFloodFill:
-                yield return SpanFloodFill(idx, idy, buffer, xSize, ySize, DifferenceThreshold, ColorToFill);
+                yield return SpanFloodFill(idx, idy, buffer, SizeX, SizeY, DifferenceThreshold, targetColor, ColorToFill);
+                break;
+            case FloodfillAlgo.SpanAndFillFloodFill:
+                yield return SpanAndFillFloodFill(idx, idy, buffer, SizeX, SizeY, DifferenceThreshold, targetColor, ColorToFill);
                 break;
             case FloodfillAlgo.Test1:
-                bool[,] array = new bool[xSize, ySize];
-                for (int i = 0; i < xSize; i++)
+                bool[,] array = new bool[SizeX, SizeY];
+                for (int i = 0; i < SizeX; i++)
                 {
-                    for (int j = 0; j < ySize; j++)
+                    for (int j = 0; j < SizeY; j++)
                     {
-                        var index2 = j + i * xSize;
+                        var index2 = j + i * SizeX;
                         array[i, j] = !buffer[index2].IsEqualTo(Color.white);
                     }
                 }
@@ -169,15 +174,14 @@ public class FloodFillAnimate : MonoBehaviour
     /// Very Basic RecursiveFloodFill
     /// Note method will cause stack overflow due to lots of recursive calls
     /// </summary>
-    IEnumerator RecursiveFloodFill(int idx, int idy, Color32[] buffer, int xSize, int ySize,
+    IEnumerator RecursiveFloodFill(int idx, int idy, Color32[] buffer, int SizeX, int SizeY,
          Color targetColor, float threshold, Color32 colorToFill)
     {
-        bool indexOutOfBounds = idx < 0 || idx > xSize - 1 || idy < 0 || idy > ySize - 1;
-
-        if (indexOutOfBounds) yield break;
+        bool outOfBounds = idx < 0 || idx > SizeX - 1 || idy < 0 || idy > SizeY - 1;
+        if (outOfBounds) yield break;
 
         //1. If current node is not Inside return.
-        var index = idx + idy * xSize;
+        var index = idx + idy * SizeX;
         Color32 currentColor = buffer[index];
         bool isVisited = ColorExtension.IsEqualTo(currentColor, colorToFill);
         bool isColorSimilar = CompareColor(currentColor, targetColor) <= threshold;
@@ -189,27 +193,26 @@ public class FloodFillAnimate : MonoBehaviour
         isLogicPaused = true; yield return new WaitUntil(UnpauseLogic);
 
         //3. Perform Flood-fill on the neighbours
-        yield return RecursiveFloodFill(idx + 1, idy, buffer, xSize, ySize, targetColor, threshold, colorToFill);
-        yield return RecursiveFloodFill(idx - 1, idy, buffer, xSize, ySize, targetColor, threshold, colorToFill);
-        yield return RecursiveFloodFill(idx, idy + 1, buffer, xSize, ySize, targetColor, threshold, colorToFill);
-        yield return RecursiveFloodFill(idx, idy - 1, buffer, xSize, ySize, targetColor, threshold, colorToFill);
+        yield return RecursiveFloodFill(idx + 1, idy, buffer, SizeX, SizeY, targetColor, threshold, colorToFill);
+        yield return RecursiveFloodFill(idx - 1, idy, buffer, SizeX, SizeY, targetColor, threshold, colorToFill);
+        yield return RecursiveFloodFill(idx, idy + 1, buffer, SizeX, SizeY, targetColor, threshold, colorToFill);
+        yield return RecursiveFloodFill(idx, idy - 1, buffer, SizeX, SizeY, targetColor, threshold, colorToFill);
     }
 
     /// <summary>
     /// Very Basic Recursive FloodFill BFS using a queue
     /// </summary>
-    IEnumerator BFSFloodFill(int idx, int idy, Color32[] buffer, int xSize, int ySize,
-        float threshold, Color32 colorToFill)
+    IEnumerator BFSFloodFill(int idx, int idy, Color32[] buffer, int SizeX, int SizeY,
+        float threshold,Color targetColor, Color32 colorToFill)
     {
         isLogicPaused = true;
 
         //1. Set first node and Target Color
         Queue<(int x, int y)> cellsToCheck = new();
         cellsToCheck.Enqueue((idx, idy));
-        var index = idx + idy * xSize;
-        Color targetColor = buffer[index];
 
         //1b. Color the first node
+        var index = idx + idy * SizeX;
         buffer[index] = colorToFill;
         UpdateImageTexture(FloodFillImage, buffer);
         isLogicPaused = true; yield return new WaitUntil(UnpauseLogic);
@@ -218,13 +221,13 @@ public class FloodFillAnimate : MonoBehaviour
         {
             //2. Pop and node from queue
             var currentCell = cellsToCheck.Dequeue();
-            index = currentCell.x + currentCell.y * xSize;
+            index = currentCell.x + currentCell.y * SizeX;
 
             //3. queue Neighbours if color is similar
-            var neighbours = FindNeighbours(currentCell, xSize, ySize);
+            var neighbours = FindNeighbours(currentCell, SizeX, SizeY);
             foreach ((int x, int y) neighbour in neighbours)
             {
-                index = neighbour.x + neighbour.y * xSize;
+                index = neighbour.x + neighbour.y * SizeX;
                 Color32 currentColor = buffer[index];
                 bool isVisited = ColorExtension.IsEqualTo(currentColor, colorToFill);
                 bool isColorSimilar = CompareColor(currentColor, targetColor) <= threshold;
@@ -242,23 +245,48 @@ public class FloodFillAnimate : MonoBehaviour
 
             //4. Continue loop until no more in queue - cellsToCheck
         }
+
+        (int, int)[] FindNeighbours((int x, int y) cell, int sizeX, int sizeY)
+        {
+            List<(int, int)> result = new List<(int, int)>();
+
+            (int x, int y) leftCell = (cell.x - 1, cell.y);
+            (int x, int y) rightCell = (cell.x + 1, cell.y);
+            (int x, int y) upCell = (cell.x, cell.y + 1);
+            (int x, int y) downCell = (cell.x, cell.y - 1);
+
+            bool indexOutOfBounds;
+
+            indexOutOfBounds = leftCell.x < 0 || leftCell.x > sizeX - 1 || leftCell.y < 0 || leftCell.y > sizeY - 1;
+            if (!indexOutOfBounds) result.Add(leftCell);
+
+            indexOutOfBounds = rightCell.x < 0 || rightCell.x > sizeX - 1 || rightCell.y < 0 || rightCell.y > sizeY - 1;
+            if (!indexOutOfBounds) result.Add(rightCell);
+
+            indexOutOfBounds = upCell.x < 0 || upCell.x > sizeX - 1 || upCell.y < 0 || upCell.y > sizeY - 1;
+            if (!indexOutOfBounds) result.Add(upCell);
+
+            indexOutOfBounds = downCell.x < 0 || downCell.x > sizeX - 1 || downCell.y < 0 || downCell.y > sizeY - 1;
+            if (!indexOutOfBounds) result.Add(downCell);
+
+            return result.ToArray();
+        }
     }
 
     /// <summary>
     /// Very Basic FloodFill DFS using a stack
     /// </summary>
-    IEnumerator DFSFloodFill(int idx, int idy, Color32[] buffer, int xSize, int ySize,
-        float threshold, Color32 colorToFill)
+    IEnumerator DFSFloodFill(int idx, int idy, Color32[] buffer, int SizeX, int SizeY,
+        float threshold, Color targetColor, Color32 colorToFill)
     {
         isLogicPaused = true;
 
         //1. Set first node and Target Color
         Stack<(int x, int y)> cellsToCheck = new();
         cellsToCheck.Push((idx, idy));
-        var index = idx + idy * xSize;
-        Color targetColor = buffer[index];
 
         //1b. Color the first node
+        var index = idx + idy * SizeX;
         buffer[index] = colorToFill;
         UpdateImageTexture(FloodFillImage, buffer);
         isLogicPaused = true; yield return new WaitUntil(UnpauseLogic);
@@ -267,13 +295,13 @@ public class FloodFillAnimate : MonoBehaviour
         {
             //2. Pop and Set the node from stack
             var currentCell = cellsToCheck.Pop();
-            index = currentCell.x + currentCell.y * xSize;
+            index = currentCell.x + currentCell.y * SizeX;
 
             //3. Stack Neighbours if color is similar
-            var neighbours = FindNeighbours(currentCell, xSize, ySize);
+            var neighbours = FindNeighbours(currentCell, SizeX, SizeY);
             foreach ((int x, int y) neighbour in neighbours)
             {
-                index = neighbour.x + neighbour.y * xSize;
+                index = neighbour.x + neighbour.y * SizeX;
                 Color32 currentColor = buffer[index];
                 bool isVisited = ColorExtension.IsEqualTo(currentColor, colorToFill);
                 bool isColorSimilar = CompareColor(currentColor, targetColor) <= threshold;
@@ -291,165 +319,182 @@ public class FloodFillAnimate : MonoBehaviour
 
             //4. Continue loop until no more in stack - cellsToCheck
         }
+
+        (int, int)[] FindNeighbours((int x, int y) cell, int sizeX, int sizeY)
+        {
+            List<(int, int)> result = new List<(int, int)>();
+
+            (int x, int y) leftCell = (cell.x - 1, cell.y);
+            (int x, int y) rightCell = (cell.x + 1, cell.y);
+            (int x, int y) upCell = (cell.x, cell.y + 1);
+            (int x, int y) downCell = (cell.x, cell.y - 1);
+
+            bool indexOutOfBounds;
+
+            indexOutOfBounds = leftCell.x < 0 || leftCell.x > sizeX - 1 || leftCell.y < 0 || leftCell.y > sizeY - 1;
+            if (!indexOutOfBounds) result.Add(leftCell);
+
+            indexOutOfBounds = rightCell.x < 0 || rightCell.x > sizeX - 1 || rightCell.y < 0 || rightCell.y > sizeY - 1;
+            if (!indexOutOfBounds) result.Add(rightCell);
+
+            indexOutOfBounds = upCell.x < 0 || upCell.x > sizeX - 1 || upCell.y < 0 || upCell.y > sizeY - 1;
+            if (!indexOutOfBounds) result.Add(upCell);
+
+            indexOutOfBounds = downCell.x < 0 || downCell.x > sizeX - 1 || downCell.y < 0 || downCell.y > sizeY - 1;
+            if (!indexOutOfBounds) result.Add(downCell);
+
+            return result.ToArray();
+        }
     }
 
-    IEnumerator SpanFloodFill(int idx, int idy, Color32[] buffer, int xSize, int ySize,
-        float threshold, Color32 colorToFill)
+    /// <summary>
+    /// Simple Span Filling
+    /// </summary>
+    IEnumerator SpanFloodFill(int x, int y, Color32[] buffer, int SizeX, int SizeY,
+        float threshold, Color targetColor, Color32 colorToFill)
     {
         isLogicPaused = true;
 
-        //1. Set first node and Target Color
-        Stack<(int x, int y)> cellsToCheck = new();
-        cellsToCheck.Push((idx, idy));
-        var index = idx + idy * xSize;
-        Color targetColor = buffer[index];
+        if (!Inside(buffer, x, y, SizeX, SizeY)) yield break;
 
+        //1. Add first node to stack
+        Stack<(int x, int y)> cellsToCheck = new();
+        cellsToCheck.Push((x, y));
         while (cellsToCheck.Count > 0)
         {
             //2. Pop from stack
-            var currentCell = cellsToCheck.Pop();
+            (x, y) = cellsToCheck.Pop();
 
-            //3. Color the current cell itself and walk left until hit a wall
-            bool isVisited = default;
-            bool isColorSimilar = default;
-            bool outOfBounds = default;
-            var spanMin = currentCell.x;
-            index = spanMin + currentCell.y * xSize;
-            do
+            var Lx = x; //Span Min
+
+            //3. Start from left of cell, color then walk left repeat until hit a wall
+            while (Inside(buffer, Lx - 1, y, SizeX, SizeY))
             {
-                buffer[index] = colorToFill;
+                buffer[Lx - 1 + y * SizeX] = colorToFill;
                 UpdateImageTexture(FloodFillImage, buffer);
                 isLogicPaused = true; yield return new WaitUntil(UnpauseLogic);
 
-                var newxMin = spanMin - 1;
-                outOfBounds = newxMin < 0;
-
-                //Early Out
-                if (outOfBounds) break;
-
-                spanMin = newxMin;
-                index = spanMin + currentCell.y * xSize;
-                Color32 currentColor = buffer[index];
-                isVisited = ColorExtension.IsEqualTo(currentColor, colorToFill);
-                isColorSimilar = CompareColor(currentColor, targetColor) <= threshold;
-
-            } while (!outOfBounds && !isVisited && isColorSimilar);
-
-            //4. Color the cell to the right until hit a wall
-            int spanMax = currentCell.x;
-
-            outOfBounds = spanMax + 1 > xSize - 1;
-            if (!outOfBounds)
-            {
-                spanMax = spanMax + 1;
-                index = spanMax + currentCell.y * xSize;
-                Color32 currentColor = buffer[index];
-                isVisited = ColorExtension.IsEqualTo(currentColor, colorToFill);
-                isColorSimilar = CompareColor(currentColor, targetColor) <= threshold;
+                Lx = Lx - 1;
             }
-
-            while (!outOfBounds && !isVisited && isColorSimilar)
+            while (Inside(buffer, x, y, SizeX, SizeY))
             {
-                buffer[index] = colorToFill;
+                buffer[x + y * SizeX] = colorToFill;
                 UpdateImageTexture(FloodFillImage, buffer);
                 isLogicPaused = true; yield return new WaitUntil(UnpauseLogic);
 
-                var newxMax = spanMax + 1;
-                outOfBounds = newxMax > xSize - 1;
-
-                //Early Out
-                if (outOfBounds) break;
-
-                spanMax = newxMax;
-                index = spanMax + currentCell.y * xSize;
-                Color32 currentColor = buffer[index];
-                isVisited = ColorExtension.IsEqualTo(currentColor, colorToFill);
-                isColorSimilar = CompareColor(currentColor, targetColor) <= threshold;
+                x = x + 1;
             }
 
-            //5. Check Up of "Span" to add to stack
-            var nextY = currentCell.y + 1;
-            outOfBounds = nextY > ySize - 1;
-            //Early Out
-            if (!outOfBounds)
+            //5. Check Up && Down of "Span" to add to stack
+            scan(Lx, x - 1, y + 1, cellsToCheck);
+            scan(Lx, x - 1, y - 1, cellsToCheck);
+
+            //6. Continue loop until no more in stack - cellsToCheck
+        }
+
+        bool Inside(Color32[] buffer, int x, int y, int SizeX, int SizeY)
+        {
+            bool outOfBounds = x < 0 || x > SizeX - 1 || y < 0 || y > SizeY - 1;
+            if (outOfBounds) return false;
+
+            var index = x + y * SizeX;
+            Color32 currentColor = buffer[index];
+            bool isVisited = ColorExtension.IsEqualTo(currentColor, colorToFill);
+            bool isColorSimilar = CompareColor(currentColor, targetColor) <= threshold;
+
+            return !isVisited && isColorSimilar;
+        }
+
+        void scan(int spanMin, int spanMax, int y, Stack<(int x, int y)> s)
+        {
+            bool span_added = false;
+            for (int x = spanMin; x <= spanMax; x++)
             {
-                bool span_added = false;
-                for (int x = spanMin; x <= spanMax; x++)
+                if (!Inside(buffer,x,y,SizeX,SizeY))
                 {
-                    index = x + nextY * xSize;
-                    Color32 currentColor = buffer[index];
-                    isVisited = ColorExtension.IsEqualTo(currentColor, colorToFill);
-                    isColorSimilar = CompareColor(currentColor, targetColor) <= threshold;
-
-                    if (isVisited || !isColorSimilar)
-                    {
-                        span_added = false;
-                    }
-                    else if (!span_added)
-                    {
-                        cellsToCheck.Push((x, nextY));
-                        span_added = true;
-                    }
+                    span_added = false;
                 }
-            }
-
-            //6. Check Down of "Span" to add to stack
-            nextY = currentCell.y - 1;
-            outOfBounds = nextY < 0;
-            //Early Out
-            if (!outOfBounds)
-            {
-                bool span_added = false;
-                for (int x = spanMin; x <= spanMax; x++)
+                else if (!span_added)
                 {
-                    index = x + nextY * xSize;
-                    Color32 currentColor = buffer[index];
-                    isVisited = ColorExtension.IsEqualTo(currentColor, colorToFill);
-                    isColorSimilar = CompareColor(currentColor, targetColor) <= threshold;
-
-                    if (isVisited || !isColorSimilar)
-                    {
-                        span_added = false;
-                    }
-                    else if (!span_added)
-                    {
-                        cellsToCheck.Push((x, nextY));
-                        span_added = true;
-                    }
+                    cellsToCheck.Push((x, y));
+                    span_added = true;
                 }
             }
         }
-
-        //4. Continue loop until no more in stack - cellsToCheck
     }
-    
-    (int, int)[] FindNeighbours((int x,int y) cell, int sizeX, int sizeY)
+
+    /// <summary>
+    /// Heckbert, Paul S (1990). "IV.10: A Seed Fill Algorithm". In Glassner, Andrew S (ed.). Graphics Gems. Academic Press. pp. 275–277.
+    /// </summary>
+    IEnumerator SpanAndFillFloodFill(int idx, int idy, Color32[] buffer, int SizeX, int SizeY,
+        float threshold, Color targetColor, Color32 colorToFill)
     {
-        List<(int, int)> result = new List<(int, int)> ();
+        isLogicPaused = true;
 
-        (int x, int y) leftCell = (cell.x - 1, cell.y);
-        (int x, int y) rightCell = (cell.x + 1, cell.y);
-        (int x, int y) upCell = (cell.x, cell.y + 1);
-        (int x, int y) downCell = (cell.x, cell.y - 1);
+        if (!Inside(buffer, idx, idy, SizeX, SizeY)) yield break;
 
-        bool indexOutOfBounds;
+        //1. Add first node
+        Stack<(int x1, int x2, int y, int dy)> cellsToCheck = new();
+        cellsToCheck.Push((idx, idx, idy, 1));
+        cellsToCheck.Push((idx, idx, idy, -1));
+        while (cellsToCheck.Count > 0)
+        {
+            //2. Pop from stack
+            (int x1, int x2, int y, int dy) = cellsToCheck.Pop();
 
-        indexOutOfBounds = leftCell.x < 0 || leftCell.x > sizeX - 1 || leftCell.y < 0 || leftCell.y > sizeY - 1;
-        if (!indexOutOfBounds) result.Add(leftCell);
+            var x = x1;
 
-        indexOutOfBounds = rightCell.x < 0 || rightCell.x > sizeX - 1 || rightCell.y < 0 || rightCell.y > sizeY - 1;
-        if (!indexOutOfBounds) result.Add(rightCell);
+            if (Inside(buffer, x, y, SizeX, SizeY))
+            {
+                while (Inside(buffer, x - 1, y, SizeX, SizeY))
+                {
+                    buffer[x - 1 + y * SizeX] = colorToFill;
+                    UpdateImageTexture(FloodFillImage, buffer);
+                    isLogicPaused = true; yield return new WaitUntil(UnpauseLogic);
 
-        indexOutOfBounds = upCell.x < 0 || upCell.x > sizeX - 1 || upCell.y < 0 || upCell.y > sizeY - 1;
-        if (!indexOutOfBounds) result.Add(upCell);
+                    x = x - 1;
+                }
+                if (x < x1)
+                    cellsToCheck.Push((x, x1 - 1, y - dy, -dy));
+            }
+            while (x1 <= x2)
+            {
+                while (Inside(buffer, x1, y, SizeX, SizeY))
+                {
+                    buffer[x1 + y * SizeX] = colorToFill;
+                    UpdateImageTexture(FloodFillImage, buffer);
+                    isLogicPaused = true; yield return new WaitUntil(UnpauseLogic);
 
-        indexOutOfBounds = downCell.x < 0 || downCell.x > sizeX - 1 || downCell.y < 0 || downCell.y > sizeY - 1;
-        if (!indexOutOfBounds) result.Add(downCell);
+                    x1 = x1 + 1;
+                }
+                if (x1 > x)
+                    cellsToCheck.Push((x, x1 - 1, y + dy, dy));
+                if (x1 - 1 > x2)
+                    cellsToCheck.Push((x2 + 1, x1 - 1, y - dy, -dy));
+                x1 = x1 + 1;
+                while (x1 < x2 && !Inside(buffer, x1, y,SizeX, SizeY))
+                {
+                    x1 = x1 + 1;
+                }
+                x = x1;
+            }
+        }
 
-        return result.ToArray();
+        bool Inside(Color32[] buffer, int x, int y, int SizeX, int SizeY)
+        {
+            bool outOfBounds = x < 0 || x > SizeX - 1 || y < 0 || y > SizeY - 1;
+            if (outOfBounds) return false;
+
+            var index = x + y * SizeX;
+            Color32 currentColor = buffer[index];
+            bool isVisited = ColorExtension.IsEqualTo(currentColor, colorToFill);
+            bool isColorSimilar = CompareColor(currentColor, targetColor) <= threshold;
+
+            return !isVisited && isColorSimilar;
+        }
     }
 
-
+    
 
     IEnumerator MyFill(bool[,] array, int x, int y)
     {
